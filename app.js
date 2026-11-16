@@ -25,6 +25,8 @@
       invalid: 'Este enlace no es válido o ha caducado.', invalidSub: 'Pide un enlace nuevo a tu contacto, o inicia sesión si tienes cuenta.', login: 'Iniciar sesión',
       loading: 'Cargando catálogo…', loadErr: 'No se pudo cargar el catálogo.', retry: 'Reintentar',
       stockChanged: 'El stock ha cambiado; hemos ajustado tu pedido.',
+      pick: '¿Qué buscas?', pickAll: 'Todas las flores y productos', pickCat: function (c) { return 'Todo ' + c.toLowerCase(); },
+      sort: 'Ordenar', sortRec: 'Recomendado', sortAsc: 'Más barato primero', sortDesc: 'Más caro primero', sortName: 'Nombre (A-Z)', vatIncl: 'IVA incluido',
       delivery: 'Entrega', from: 'desde', dateChanged: 'Fecha cambiada: hemos ajustado tu pedido al stock de ese día.',
       days: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
       install: 'Instala la app en tu móvil para pedir más rápido.', installBtn: 'Instalar',
@@ -55,6 +57,8 @@
       invalid: '此链接无效或已过期。', invalidSub: '请向我们索取新链接，或登录您的账户。', login: '登录',
       loading: '正在加载产品…', loadErr: '无法加载产品。', retry: '重试',
       stockChanged: '库存有变化，已自动调整您的订单。',
+      pick: '选择品类', pickAll: '全部花卉和产品', pickCat: function (c) { return '全部 · ' + c; },
+      sort: '排序', sortRec: '推荐', sortAsc: '价格从低到高', sortDesc: '价格从高到低', sortName: '名称 (A-Z)', vatIncl: '含增值税',
       delivery: '送货日期', from: '满', dateChanged: '已更换日期，订单已按当天库存调整。',
       days: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
       install: '将应用安装到手机，下单更快捷。', installBtn: '安装',
@@ -83,6 +87,7 @@
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
   var S = {
+    sort: load('orden', 'asc'),
     products: [], byId: {}, cats: [], cat: '', fam: '', q: '', shown: 40,
     dates: [], date: load('date', ''),
     cart: load('cart', {}), customer: load('customer', {}), view: 'shop', result: null, busy: false, errors: {}, notice: null
@@ -188,11 +193,23 @@
       ((S.view === 'shop' || S.view === 'cart') && S.dates.length ? '<div class="chips dates" role="toolbar" aria-label="' + esc(t('delivery')) + '"><span class="dl">' + esc(t('delivery')) + '</span>' +
         S.dates.map(function (d) { return chip(d, dateLabel(d), S.date === d, 'date'); }).join('') + '</div>' : '') +
       (S.view === 'shop' ? '<input class="search" type="search" data-a="q" placeholder="' + esc(t('search')) + '" value="' + esc(S.q) + '" aria-label="' + esc(t('search')) + '">' +
-        '<div class="chips" role="toolbar">' + chip('', t('all'), S.cat === '', 'cat') + S.cats.map(function (c) { return chip(c.name, c.name, S.cat === c.name, 'cat'); }).join('') + '</div>' +
-        famChips() : '') +
+        pickSelect() : '') +
       '</div></header>';
   }
   function chip(v, label, on, a) { return '<button class="chip" data-a="' + a + '" data-v="' + esc(v) + '" aria-pressed="' + on + '">' + esc(label) + '</button>'; }
+  function pickSelect() {
+    var n = {}, k;
+    S.products.forEach(function (p) { n[p.c] = (n[p.c] || 0) + 1; k = p.c + '|' + p.f; n[k] = (n[k] || 0) + 1; });
+    var cur = S.cat + '|' + S.fam;
+    var o = function (v, label, num) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + (num ? ' (' + num + ')' : '') + '</option>'; };
+    var h = o('|', t('pickAll'), S.products.length);
+    S.cats.forEach(function (c) {
+      if (!n[c.name]) return;
+      h += '<optgroup label="' + esc(c.name) + '">' + o(c.name + '|', t('pickCat')(c.name), n[c.name]) +
+        c.families.filter(function (f) { return n[c.name + '|' + f]; }).map(function (f) { return o(c.name + '|' + f, f, n[c.name + '|' + f]); }).join('') + '</optgroup>';
+    });
+    return '<label class="pick"><span>' + esc(t('pick')) + '</span><select data-a="pick">' + h + '</select></label>';
+  }
   function famChips() {
     var c = S.cats.filter(function (x) { return x.name === S.cat; })[0];
     if (!c || !c.families.length) return '';
@@ -201,12 +218,19 @@
 
   function filtered() {
     var q = norm(S.q).trim().split(/\s+/).filter(Boolean);
-    return S.products.filter(function (p) {
+    var list = S.products.filter(function (p) {
       if (S.cat && p.c !== S.cat) return false;
       if (S.fam && p.f !== S.fam) return false;
       for (var i = 0; i < q.length; i++) if (p._s.indexOf(q[i]) < 0) return false;
       return true;
     });
+    return sortList(list);
+  }
+  function sortList(list) {
+    if (S.sort === 'asc') return list.slice().sort(function (a, b) { return a.p - b.p || a.n.localeCompare(b.n); });
+    if (S.sort === 'desc') return list.slice().sort(function (a, b) { return b.p - a.p || a.n.localeCompare(b.n); });
+    if (S.sort === 'name') return list.slice().sort(function (a, b) { return a.n.localeCompare(b.n, 'es'); });
+    return list;
   }
 
   function card(p) {
@@ -224,7 +248,9 @@
   function renderList() {
     var el = document.getElementById('list'); if (!el) return;
     var all = filtered(), shown = all.slice(0, S.shown);
-    el.innerHTML = '<p class="count">' + esc(t('products')(all.length)) + '</p>' +
+    var opt = function (v, k) { return '<option value="' + v + '"' + (S.sort === v ? ' selected' : '') + '>' + esc(t(k)) + '</option>'; };
+    el.innerHTML = '<div class="listbar"><p class="count">' + esc(t('products')(all.length)) + (C.vat ? ' · ' + esc(t('vatIncl')) : '') + '</p>' +
+      '<label class="sort"><span>' + esc(t('sort')) + '</span><select data-a="sort">' + opt('asc', 'sortAsc') + opt('desc', 'sortDesc') + opt('name', 'sortName') + opt('rec', 'sortRec') + '</select></label></div>' +
       (shown.length ? '<div class="list">' + shown.map(card).join('') + (all.length > shown.length ? '<button class="more" data-a="more">' + esc(t('more')) + '</button>' : '') + '</div>'
                     : '<p class="empty-state">' + esc(t('none')) + '</p>');
     observeMore();
@@ -387,7 +413,7 @@
     lines.forEach(function (l) { out.push('• ' + l.q + ' × ' + l.p.n + ' (' + l.p.u + ', ' + (l.p.r || '') + ') — ' + eur(lineTotal(l))); });
     out.push('');
     if (ship) out.push('Envío: ' + eur(ship));
-    out.push('*Total: ' + eur(total) + '*');
+    out.push('*Total: ' + eur(total) + '*' + (C.vat ? ' (IVA incluido)' : ''));
     if (C.note) out.push(C.note);
     out.push('');
     out.push('Nombre: ' + S.customer.name);
@@ -451,6 +477,10 @@
       if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(ta.value).then(done, function () { ta.select(); document.execCommand('copy'); done(); });
       else { ta.select(); document.execCommand('copy'); done(); }
     }
+  });
+  app.addEventListener('change', function (e) {
+    if (e.target.getAttribute('data-a') === 'sort') { S.sort = e.target.value; save('orden', S.sort); S.shown = 40; renderList(); }
+    if (e.target.getAttribute('data-a') === 'pick') { var v = e.target.value.split('|'); S.cat = v[0] || ''; S.fam = v[1] || ''; S.shown = 40; renderList(); window.scrollTo(0, 0); }
   });
   var qt;
   app.addEventListener('input', function (e) {
