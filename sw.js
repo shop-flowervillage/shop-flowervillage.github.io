@@ -1,5 +1,5 @@
 // La app abre rapido y, sin conexion, ensena el ultimo catalogo descargado
-const V='fv-202611162041';
+const V='fv-202611202333';
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(V).then(c=>c.addAll(['./','./app.css','./app.js','./manifest.webmanifest','./icon-192.png']).catch(()=>{})))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',e=>{
